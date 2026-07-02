@@ -815,6 +815,68 @@ input[type="date"].form-control {
 
 .btn-danger:hover { background: var(--danger-dim); }
 
+/* ========== DATA IMPORT/EXPORT ========== */
+.data-io-heading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.data-io-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.data-io-divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+.data-io-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 16px;
+  height: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+.btn-link {
+  display: inline;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.btn-link:hover { color: #fbbf24; }
+
+.import-file-name {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  word-break: break-all;
+}
+
 /* ========== VIEW MODAL ========== */
 .view-modal-meta {
   display: flex;

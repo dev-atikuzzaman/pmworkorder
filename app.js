@@ -665,6 +665,247 @@ window.addEventListener('appinstalled', () => {
 });
 
 // ============================================================
+// DATA IMPORT / EXPORT
+// ============================================================
+const EXPORT_COLUMNS = [
+  { key: 'date',     header: 'তারিখ' },
+  { key: 'category', header: 'ক্যাটাগরি' },
+  { key: 'problem',  header: 'সমস্যার বিবরণ' },
+  { key: 'solution', header: 'সমাধানের বিবরণ' },
+  { key: 'notes',    header: 'মন্তব্য' }
+];
+
+// Accepted header names when reading an import file (case-insensitive)
+const HEADER_ALIASES = {
+  date:     ['তারিখ', 'date'],
+  category: ['ক্যাটাগরি', 'category'],
+  problem:  ['সমস্যার বিবরণ', 'সমস্যা', 'problem', 'issue'],
+  solution: ['সমাধানের বিবরণ', 'সমাধান', 'solution'],
+  notes:    ['মন্তব্য', 'অতিরিক্ত মন্তব্য', 'notes', 'note']
+};
+
+let importParsedRows = null; // { headerMap, dataRows } staged for import
+
+function xlsxReady() {
+  if (typeof XLSX === 'undefined') {
+    showToast('এই ফিচারের জন্য একবার ইন্টারনেট সংযোগ প্রয়োজন', 'error');
+    return false;
+  }
+  return true;
+}
+
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function ordersToAOA() {
+  const rows = [EXPORT_COLUMNS.map(c => c.header)];
+  [...orders]
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .forEach(o => rows.push(EXPORT_COLUMNS.map(c => o[c.key] || '')));
+  return rows;
+}
+
+function exportCSV() {
+  if (!xlsxReady()) return;
+  if (!orders.length) { showToast('এক্সপোর্ট করার জন্য কোনো এন্ট্রি নেই', 'error'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(ordersToAOA());
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  downloadBlob(blob, `worklog-export-${todayStr()}.csv`);
+  showToast('CSV ফাইল ডাউনলোড হয়েছে', 'success');
+}
+
+function exportXLSX() {
+  if (!xlsxReady()) return;
+  if (!orders.length) { showToast('এক্সপোর্ট করার জন্য কোনো এন্ট্রি নেই', 'error'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(ordersToAOA());
+  ws['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 42 }, { wch: 42 }, { wch: 30 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'WorkOrders');
+  XLSX.writeFile(wb, `worklog-export-${todayStr()}.xlsx`);
+  showToast('Excel ফাইল ডাউনলোড হয়েছে', 'success');
+}
+
+function downloadTemplate() {
+  if (!xlsxReady()) return;
+  const rows = [
+    EXPORT_COLUMNS.map(c => c.header),
+    ['2026-07-02', 'মিটারিং', 'উদাহরণ: সমস্যার বিবরণ এখানে লিখুন', 'উদাহরণ: সমাধানের বিবরণ এখানে লিখুন', 'ঐচ্ছিক মন্তব্য']
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  downloadBlob(blob, 'import-template.csv');
+}
+
+function normalizeHeader(h) {
+  return String(h || '').trim().toLowerCase();
+}
+
+function mapHeaders(headerRow) {
+  const map = {};
+  headerRow.forEach((h, idx) => {
+    const norm = normalizeHeader(h);
+    for (const key in HEADER_ALIASES) {
+      if (map[key] !== undefined) continue;
+      if (HEADER_ALIASES[key].some(alias => normalizeHeader(alias) === norm)) {
+        map[key] = idx;
+      }
+    }
+  });
+  return map;
+}
+
+// Converts an Excel Date object or a plain string into 'YYYY-MM-DD'
+function excelDateToStr(val) {
+  if (val instanceof Date && !isNaN(val)) {
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(val.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    // Assumes DD/MM/YYYY or DD-MM-YYYY
+    return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed)) {
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  }
+  return s;
+}
+
+function parseImportFile(file) {
+  return new Promise((resolve, reject) => {
+    const isCsv = /\.csv$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = isCsv
+          ? XLSX.read(e.target.result, { type: 'string' })
+          : XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+        resolve(aoa);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('ফাইল পড়া যায়নি'));
+    if (isCsv) reader.readAsText(file, 'UTF-8');
+    else reader.readAsArrayBuffer(file);
+  });
+}
+
+async function handleImportFileSelected(file) {
+  if (!file || !xlsxReady()) return;
+  try {
+    const aoa = await parseImportFile(file);
+    if (!aoa.length) { showToast('ফাইলে কোনো ডাটা পাওয়া যায়নি', 'error'); return; }
+
+    const headerMap = mapHeaders(aoa[0]);
+    if (['date', 'category', 'problem', 'solution'].some(k => headerMap[k] === undefined)) {
+      showToast('কলাম হেডার মেলেনি। তারিখ, ক্যাটাগরি, সমস্যার বিবরণ ও সমাধানের বিবরণ কলাম আবশ্যক', 'error');
+      return;
+    }
+
+    importParsedRows = { headerMap, dataRows: aoa.slice(1) };
+    const nameEl = document.getElementById('importFileName');
+    nameEl.textContent = `নির্বাচিত ফাইল: ${file.name} — ${aoa.length - 1} টি সারি পাওয়া গেছে`;
+    nameEl.style.display = '';
+    document.getElementById('btnDoImport').disabled = false;
+  } catch (err) {
+    showToast('ফাইল পার্স করা যায়নি। ফরম্যাট চেক করে আবার চেষ্টা করুন', 'error');
+  }
+}
+
+function runImport() {
+  if (!importParsedRows) return;
+  const { headerMap, dataRows } = importParsedRows;
+  let added = 0, skippedDup = 0, skippedInvalid = 0;
+
+  dataRows.forEach(row => {
+    if (!row || row.every(c => c === '' || c === undefined || c === null)) return;
+
+    const date = excelDateToStr(row[headerMap.date]);
+    const category = String(row[headerMap.category] ?? '').trim();
+    const problem = String(row[headerMap.problem] ?? '').trim();
+    const solution = String(row[headerMap.solution] ?? '').trim();
+    const notes = headerMap.notes !== undefined ? String(row[headerMap.notes] ?? '').trim() : '';
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !category || !problem || !solution) {
+      skippedInvalid++;
+      return;
+    }
+
+    const isDup = orders.some(o =>
+      o.date === date && o.category === category && o.problem === problem && o.solution === solution
+    );
+    if (isDup) { skippedDup++; return; }
+
+    orders.push({
+      id: genId(), date, category, problem, solution, notes,
+      image: null, createdAt: Date.now()
+    });
+    added++;
+  });
+
+  saveOrders();
+  updateCategoryDropdown();
+  updateStats();
+  renderOrders();
+
+  let msg = `${added} টি এন্ট্রি ইম্পোর্ট হয়েছে`;
+  if (skippedDup) msg += `, ${skippedDup} টি ডুপ্লিকেট বাদ দেওয়া হয়েছে`;
+  if (skippedInvalid) msg += `, ${skippedInvalid} টি অসম্পূর্ণ সারি বাদ দেওয়া হয়েছে`;
+  showToast(msg, added > 0 ? 'success' : 'info');
+
+  resetImportUI();
+  closeModal('dataModal');
+}
+
+function resetImportUI() {
+  importParsedRows = null;
+  document.getElementById('fieldImportFile').value = '';
+  document.getElementById('importFileName').style.display = 'none';
+  document.getElementById('importFileName').textContent = '';
+  document.getElementById('btnDoImport').disabled = true;
+}
+
+document.getElementById('btnDataIO').addEventListener('click', () => {
+  resetImportUI();
+  openModal('dataModal');
+});
+document.getElementById('dataModalClose').addEventListener('click', () => closeModal('dataModal'));
+document.getElementById('btnExportCsv').addEventListener('click', exportCSV);
+document.getElementById('btnExportXlsx').addEventListener('click', exportXLSX);
+document.getElementById('btnDownloadTemplate').addEventListener('click', downloadTemplate);
+document.getElementById('fieldImportFile').addEventListener('change', (e) => handleImportFileSelected(e.target.files[0]));
+document.getElementById('btnDoImport').addEventListener('click', runImport);
+
+const importZone = document.getElementById('importZone');
+importZone.addEventListener('dragover', (e) => { e.preventDefault(); importZone.classList.add('dragover'); });
+importZone.addEventListener('dragleave', () => importZone.classList.remove('dragover'));
+importZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  importZone.classList.remove('dragover');
+  handleImportFileSelected(e.dataTransfer.files[0]);
+});
+
+// ============================================================
 // INIT
 // ============================================================
 function init() {
