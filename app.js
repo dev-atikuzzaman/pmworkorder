@@ -1221,6 +1221,42 @@ function buildBarChartSVG(data) {
   </svg>`;
 }
 
+// ---- Print (per-view) ----
+function printAnalyticsSection(target) {
+  const printDateStr = formatDate(new Date().toISOString().split('T')[0]);
+  let titleText, sectionId, cssClass;
+
+  if (target === 'monthly') {
+    titleText = `মাসিক পারফরম্যান্স রিপোর্ট — ${monthLabel(currentAnalyticsMonth)}`;
+    sectionId = 'monthlyPerfSection';
+    cssClass = 'printing-analytics-monthly';
+  } else {
+    titleText = 'সময়ভিত্তিক তুলনা রিপোর্ট';
+    sectionId = 'compareSection';
+    cssClass = 'printing-analytics-compare';
+  }
+
+  const section = document.getElementById(sectionId);
+  const header = document.createElement('div');
+  header.className = 'print-only-header';
+  header.innerHTML = `<h1>গ্যাসফিল্ড ওয়ার্ক অর্ডার লগবুক</h1><h2>${escapeHtml(titleText)}</h2><p>প্রিন্ট তারিখ: ${printDateStr}</p>`;
+  section.prepend(header);
+
+  document.body.classList.add(cssClass);
+  window.print();
+
+  const cleanup = () => {
+    document.body.classList.remove(cssClass);
+    header.remove();
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 3000); // fallback in case afterprint doesn't fire
+}
+
+document.getElementById('btnPrintMonthly').addEventListener('click', () => printAnalyticsSection('monthly'));
+document.getElementById('btnPrintCompare').addEventListener('click', () => printAnalyticsSection('compare'));
+
 // ============================================================
 // INIT
 // ============================================================

@@ -134,16 +134,21 @@
     <div id="analyticsView" style="display:none">
 
       <!-- MONTHLY BREAKDOWN -->
-      <section class="analytics-section">
+      <section class="analytics-section" id="monthlyPerfSection">
         <div class="analytics-section-head">
           <h2 class="analytics-title">মাসিক পারফরম্যান্স</h2>
-          <div class="month-picker">
-            <button class="month-nav-btn" id="monthPrev" title="আগের মাস">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <input type="month" id="monthSelect" class="month-input" />
-            <button class="month-nav-btn" id="monthNext" title="পরের মাস">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          <div class="head-controls">
+            <div class="month-picker">
+              <button class="month-nav-btn" id="monthPrev" title="আগের মাস">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <input type="month" id="monthSelect" class="month-input" />
+              <button class="month-nav-btn" id="monthNext" title="পরের মাস">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
+            <button class="print-btn" id="btnPrintMonthly" title="প্রিন্ট করুন">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
             </button>
           </div>
         </div>
@@ -156,9 +161,12 @@
       <div class="data-io-divider"></div>
 
       <!-- COMPARISON CHART -->
-      <section class="analytics-section">
+      <section class="analytics-section" id="compareSection">
         <div class="analytics-section-head">
           <h2 class="analytics-title">সময়ভিত্তিক তুলনা</h2>
+          <button class="print-btn" id="btnPrintCompare" title="প্রিন্ট করুন">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          </button>
         </div>
 
         <div class="compare-controls">
@@ -390,7 +398,7 @@
           <button type="button" class="btn-link" id="btnDownloadTemplate">নমুনা টেমপ্লেট ডাউনলোড করুন</button>
         </p>
         <div class="image-upload-zone" id="importZone">
-          <input type="file" id="fieldImportFile" accept=".csv,.xlsx,.xls" class="file-input" />
+          <input type="file" id="fieldImportFile" accept=".csv,.xlsx,.xls,text/csv,text/comma-separated-values,application/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*" class="file-input" />
           <div class="upload-placeholder" id="importPlaceholder">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><path d="M12 15V3"/></svg>
             <p>CSV বা Excel ফাইল আপলোড করতে ক্লিক করুন বা টেনে আনুন</p>
