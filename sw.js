@@ -1,5 +1,5 @@
-// GasField LogBook — Service Worker
-const CACHE_NAME = 'gasfield-logbook-v4';
+ // GasField LogBook — Service Worker
+const CACHE_NAME = 'gasfield-logbook-v5';
 const ASSETS = [
   './',
   './index.html',
