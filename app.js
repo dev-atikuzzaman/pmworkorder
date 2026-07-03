@@ -698,6 +698,51 @@ function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
+// ---- Dependency-free, RFC4180-correct CSV parser/serializer -------------
+// (SheetJS's CSV-string mode was mis-splitting rows whenever a Bangla
+// problem/solution field contained a comma or a line break, which is very
+// common in real entries — that caused every row to come out misaligned
+// and fail validation. This hand-written parser is used for all .csv
+// reading/writing; SheetJS is now only used for genuine .xlsx/.xls files.)
+function toCSVField(val) {
+  const s = String(val ?? '');
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function rowsToCSV(rows) {
+  return rows.map(row => row.map(toCSVField).join(',')).join('\r\n');
+}
+
+function parseCSVText(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+  const len = text.length;
+
+  while (i < len) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ',') { row.push(field); field = ''; i++; continue; }
+    if (ch === '\r') { i++; continue; }
+    if (ch === '\n') { row.push(field); field = ''; rows.push(row); row = []; i++; continue; }
+    field += ch; i++;
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+  return rows;
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -718,10 +763,8 @@ function ordersToAOA() {
 }
 
 function exportCSV() {
-  if (!xlsxReady()) return;
   if (!orders.length) { showToast('এক্সপোর্ট করার জন্য কোনো এন্ট্রি নেই', 'error'); return; }
-  const ws = XLSX.utils.aoa_to_sheet(ordersToAOA());
-  const csv = XLSX.utils.sheet_to_csv(ws);
+  const csv = rowsToCSV(ordersToAOA());
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   downloadBlob(blob, `worklog-export-${todayStr()}.csv`);
   showToast('CSV ফাইল ডাউনলোড হয়েছে', 'success');
@@ -739,19 +782,23 @@ function exportXLSX() {
 }
 
 function downloadTemplate() {
-  if (!xlsxReady()) return;
   const rows = [
     EXPORT_COLUMNS.map(c => c.header),
     ['2026-07-02', 'মিটারিং', 'উদাহরণ: সমস্যার বিবরণ এখানে লিখুন', 'উদাহরণ: সমাধানের বিবরণ এখানে লিখুন', 'ঐচ্ছিক মন্তব্য']
   ];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const csv = XLSX.utils.sheet_to_csv(ws);
+  const csv = rowsToCSV(rows);
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   downloadBlob(blob, 'import-template.csv');
 }
 
 function normalizeHeader(h) {
   return String(h || '').trim().toLowerCase();
+}
+
+// Strips invisible characters (stray BOM, zero-width spaces) that can sneak
+// in via copy-paste or re-saving a file on mobile spreadsheet apps.
+function cleanStr(v) {
+  return String(v ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 }
 
 function mapHeaders(headerRow) {
@@ -776,7 +823,7 @@ function excelDateToStr(val) {
     const d = String(val.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
-  const s = String(val ?? '').trim();
+  const s = cleanStr(val);
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m) {
@@ -796,9 +843,11 @@ function parseImportFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb = isCsv
-          ? XLSX.read(e.target.result, { type: 'string' })
-          : XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        if (isCsv) {
+          resolve(parseCSVText(e.target.result));
+          return;
+        }
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
         resolve(aoa);
@@ -811,7 +860,9 @@ function parseImportFile(file) {
 }
 
 async function handleImportFileSelected(file) {
-  if (!file || !xlsxReady()) return;
+  if (!file) return;
+  const isCsv = /\.csv$/i.test(file.name);
+  if (!isCsv && !xlsxReady()) return;
   try {
     const aoa = await parseImportFile(file);
     if (!aoa.length) { showToast('ফাইলে কোনো ডাটা পাওয়া যায়নি', 'error'); return; }
@@ -841,10 +892,10 @@ function runImport() {
     if (!row || row.every(c => c === '' || c === undefined || c === null)) return;
 
     const date = excelDateToStr(row[headerMap.date]);
-    const category = String(row[headerMap.category] ?? '').trim();
-    const problem = String(row[headerMap.problem] ?? '').trim();
-    const solution = String(row[headerMap.solution] ?? '').trim();
-    const notes = headerMap.notes !== undefined ? String(row[headerMap.notes] ?? '').trim() : '';
+    const category = cleanStr(row[headerMap.category]);
+    const problem = cleanStr(row[headerMap.problem]);
+    const solution = cleanStr(row[headerMap.solution]);
+    const notes = headerMap.notes !== undefined ? cleanStr(row[headerMap.notes]) : '';
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !category || !problem || !solution) {
       skippedInvalid++;
