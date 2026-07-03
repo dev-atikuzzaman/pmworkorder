@@ -906,6 +906,322 @@ importZone.addEventListener('drop', (e) => {
 });
 
 // ============================================================
+// ANALYTICS / PERFORMANCE TAB
+// ============================================================
+const CHART_COLORS = ['#f59e0b','#3b82f6','#22c55e','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16','#f97316','#eab308'];
+const WEEK_NAME = 'সপ্তাহ';
+const MONTH_SHORT = ['জানু','ফেব্রু','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগ','সেপ্ট','অক্টো','নভে','ডিসে'];
+
+let currentAnalyticsMonth = getCurrentMonth();
+let comparePeriodType = 'month';
+let selectedComparePeriods = new Set();
+
+// ---- Tab switching ----
+function switchView(view) {
+  document.getElementById('tabEntries').classList.toggle('active', view === 'entries');
+  document.getElementById('tabAnalytics').classList.toggle('active', view === 'analytics');
+  document.getElementById('entriesView').style.display = view === 'entries' ? '' : 'none';
+  document.getElementById('analyticsView').style.display = view === 'analytics' ? '' : 'none';
+  if (view === 'analytics') renderAnalytics();
+}
+document.getElementById('tabEntries').addEventListener('click', () => switchView('entries'));
+document.getElementById('tabAnalytics').addEventListener('click', () => switchView('analytics'));
+
+// ---- Period key helpers ----
+function getMonthKey(dateStr) { return (dateStr || '').slice(0, 7); }
+function getYearKey(dateStr) { return (dateStr || '').slice(0, 4); }
+
+function getISOWeekKey(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+function getPeriodKey(dateStr, type) {
+  if (type === 'week') return getISOWeekKey(dateStr);
+  if (type === 'year') return getYearKey(dateStr);
+  return getMonthKey(dateStr);
+}
+
+function shiftMonth(monthKey, delta) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabel(monthKey) {
+  const [y, m] = monthKey.split('-');
+  const months = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+  return `${months[parseInt(m, 10) - 1] || ''} ${y}`;
+}
+
+// { main, sub } short label pair used both for chart bars and checklist text
+function periodLabelParts(key, type) {
+  if (type === 'month') {
+    const [y, m] = key.split('-');
+    return { main: MONTH_SHORT[parseInt(m, 10) - 1] || key, sub: y };
+  }
+  if (type === 'year') {
+    return { main: key, sub: '' };
+  }
+  if (type === 'week') {
+    const [y, w] = key.split('-W');
+    return { main: `${WEEK_NAME} ${parseInt(w, 10)}`, sub: y };
+  }
+  return { main: key, sub: '' };
+}
+
+function periodLabel(key, type) {
+  const { main, sub } = periodLabelParts(key, type);
+  return sub ? `${main}, ${sub}` : main;
+}
+
+// ---- Master render ----
+function renderAnalytics() {
+  renderMonthSummary();
+  renderCategoryBreakdown();
+  renderCompareControls();
+  renderCompareChart();
+}
+
+// ---- Monthly breakdown: month picker ----
+document.getElementById('monthSelect').addEventListener('change', (e) => {
+  if (e.target.value) {
+    currentAnalyticsMonth = e.target.value;
+    renderMonthSummary();
+    renderCategoryBreakdown();
+  }
+});
+document.getElementById('monthPrev').addEventListener('click', () => {
+  currentAnalyticsMonth = shiftMonth(currentAnalyticsMonth, -1);
+  renderMonthSummary();
+  renderCategoryBreakdown();
+});
+document.getElementById('monthNext').addEventListener('click', () => {
+  currentAnalyticsMonth = shiftMonth(currentAnalyticsMonth, 1);
+  renderMonthSummary();
+  renderCategoryBreakdown();
+});
+
+function renderMonthSummary() {
+  document.getElementById('monthSelect').value = currentAnalyticsMonth;
+
+  const thisEntries = orders.filter(o => getMonthKey(o.date) === currentAnalyticsMonth);
+  const prevMonth = shiftMonth(currentAnalyticsMonth, -1);
+  const prevEntries = orders.filter(o => getMonthKey(o.date) === prevMonth);
+  const cats = new Set(thisEntries.map(o => o.category || 'সাধারণ'));
+
+  let changeText, changeClass;
+  if (thisEntries.length === 0 && prevEntries.length === 0) {
+    changeText = '—'; changeClass = 'neutral';
+  } else if (prevEntries.length === 0) {
+    changeText = 'নতুন'; changeClass = 'up';
+  } else {
+    const pct = Math.round(((thisEntries.length - prevEntries.length) / prevEntries.length) * 100);
+    changeText = `${pct > 0 ? '+' : ''}${pct}%`;
+    changeClass = pct > 0 ? 'up' : (pct < 0 ? 'down' : 'neutral');
+  }
+
+  document.getElementById('monthSummary').innerHTML = `
+    <div class="month-stat-card">
+      <span class="month-stat-num">${thisEntries.length}</span>
+      <span class="month-stat-label">মোট এন্ট্রি</span>
+    </div>
+    <div class="month-stat-card">
+      <span class="month-stat-num">${cats.size}</span>
+      <span class="month-stat-label">সক্রিয় ক্যাটাগরি</span>
+    </div>
+    <div class="month-stat-card">
+      <span class="month-stat-num change-${changeClass}">${changeText}</span>
+      <span class="month-stat-label">গত মাসের তুলনায়</span>
+    </div>
+  `;
+}
+
+function renderCategoryBreakdown() {
+  const grid = document.getElementById('categoryBreakdownGrid');
+  const monthEntries = orders.filter(o => getMonthKey(o.date) === currentAnalyticsMonth);
+
+  if (!monthEntries.length) {
+    grid.innerHTML = `<div class="analytics-empty">${monthLabel(currentAnalyticsMonth)} মাসে কোনো এন্ট্রি নেই</div>`;
+    return;
+  }
+
+  const counts = {};
+  monthEntries.forEach(o => {
+    const c = o.category || 'সাধারণ';
+    counts[c] = (counts[c] || 0) + 1;
+  });
+
+  const maxCount = Math.max(...Object.values(counts));
+  const sortedCats = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+  grid.innerHTML = sortedCats.map(cat => {
+    const colorClass = getCategoryColor(cat);
+    const count = counts[cat];
+    const pct = Math.round((count / maxCount) * 100);
+    return `
+      <div class="cat-rect ${colorClass}" data-category="${escapeHtml(cat)}">
+        <div class="cat-rect-top">
+          <span class="cat-rect-name">${escapeHtml(cat)}</span>
+          <span class="cat-rect-count">${count}</span>
+        </div>
+        <div class="cat-rect-bar-track">
+          <div class="cat-rect-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.cat-rect').forEach(el => {
+    el.addEventListener('click', () => openCategoryEntries(el.dataset.category));
+  });
+}
+
+// ---- Drill-down modal ----
+function openCategoryEntries(category) {
+  const list = orders
+    .filter(o => getMonthKey(o.date) === currentAnalyticsMonth && (o.category || 'সাধারণ') === category)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  document.getElementById('categoryEntriesTitle').textContent = `${category} — ${monthLabel(currentAnalyticsMonth)} (${list.length})`;
+  document.getElementById('categoryEntriesList').innerHTML = list.map(o => `
+    <div class="cat-entry-row" data-id="${o.id}">
+      <span class="cat-entry-date">${formatDate(o.date)}</span>
+      <span class="cat-entry-problem">${escapeHtml(o.problem || '')}</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    </div>
+  `).join('');
+
+  document.getElementById('categoryEntriesList').querySelectorAll('.cat-entry-row').forEach(row => {
+    row.addEventListener('click', () => {
+      closeModal('categoryEntriesModal');
+      openViewModal(row.dataset.id);
+    });
+  });
+
+  openModal('categoryEntriesModal');
+}
+document.getElementById('categoryEntriesClose').addEventListener('click', () => closeModal('categoryEntriesModal'));
+
+// ---- Comparison chart controls ----
+function getAllPeriodKeys(type) {
+  const keys = new Set();
+  orders.forEach(o => { if (o.date) keys.add(getPeriodKey(o.date, type)); });
+  return [...keys].sort().reverse(); // most recent first
+}
+
+document.getElementById('comparePeriodType').addEventListener('change', (e) => {
+  comparePeriodType = e.target.value;
+  selectedComparePeriods.clear();
+  renderCompareControls();
+  renderCompareChart();
+});
+document.getElementById('compareCategory').addEventListener('change', renderCompareChart);
+
+document.getElementById('btnApplyLastN').addEventListener('click', () => {
+  const n = parseInt(document.getElementById('compareLastN').value, 10);
+  if (!n || n < 1) { showToast('একটি সঠিক সংখ্যা দিন', 'error'); return; }
+  const allKeys = getAllPeriodKeys(comparePeriodType);
+  selectedComparePeriods = new Set(allKeys.slice(0, n));
+  renderCompareControls();
+  renderCompareChart();
+});
+
+function renderCompareControls() {
+  // Category dropdown
+  const catSel = document.getElementById('compareCategory');
+  const curCat = catSel.value;
+  const cats = [...new Set(orders.map(o => o.category).filter(Boolean))].sort();
+  catSel.innerHTML = '<option value="">সব ক্যাটাগরি (মোট)</option>' +
+    cats.map(c => `<option value="${escapeHtml(c)}" ${c === curCat ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+
+  // Period checklist
+  const allKeys = getAllPeriodKeys(comparePeriodType);
+  const wrap = document.getElementById('comparePeriodsSelect');
+
+  if (!allKeys.length) {
+    wrap.innerHTML = `<span class="analytics-empty-inline">তুলনার জন্য কোনো ডাটা নেই</span>`;
+    return;
+  }
+
+  if (selectedComparePeriods.size === 0) {
+    allKeys.slice(0, 6).forEach(k => selectedComparePeriods.add(k));
+  }
+
+  wrap.innerHTML = allKeys.map(k => {
+    const checked = selectedComparePeriods.has(k);
+    return `
+      <label class="period-check${checked ? ' checked' : ''}">
+        <input type="checkbox" value="${k}" ${checked ? 'checked' : ''} />
+        <span>${periodLabel(k, comparePeriodType)}</span>
+      </label>
+    `;
+  }).join('');
+
+  wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedComparePeriods.add(cb.value);
+      else selectedComparePeriods.delete(cb.value);
+      cb.closest('.period-check').classList.toggle('checked', cb.checked);
+      renderCompareChart();
+    });
+  });
+}
+
+function renderCompareChart() {
+  const type = comparePeriodType;
+  const category = document.getElementById('compareCategory').value;
+  const chartWrap = document.getElementById('chartWrap');
+
+  const keys = [...selectedComparePeriods].sort();
+  if (!keys.length) {
+    chartWrap.innerHTML = `<div class="analytics-empty">তুলনা করার জন্য অন্তত একটি সময়কাল বাছাই করুন</div>`;
+    return;
+  }
+
+  const data = keys.map((k, i) => {
+    const count = orders.filter(o =>
+      o.date && getPeriodKey(o.date, type) === k && (!category || o.category === category)
+    ).length;
+    const parts = periodLabelParts(k, type);
+    return { key: k, main: parts.main, sub: parts.sub, value: count, color: CHART_COLORS[i % CHART_COLORS.length] };
+  });
+
+  chartWrap.innerHTML = buildBarChartSVG(data);
+}
+
+function buildBarChartSVG(data) {
+  const maxVal = Math.max(1, ...data.map(d => d.value));
+  const barW = 48, gap = 22, chartH = 200, topPad = 24, bottomLabelH = 40;
+  const w = data.length * (barW + gap) + gap;
+  const h = topPad + chartH + bottomLabelH;
+
+  const bars = data.map((d, i) => {
+    const x = gap + i * (barW + gap);
+    const barH = Math.round((d.value / maxVal) * (chartH - 16));
+    const y = topPad + (chartH - barH);
+    return `
+      <g>
+        <title>${escapeHtml(d.main)}${d.sub ? ', ' + escapeHtml(d.sub) : ''}: ${d.value}</title>
+        <text x="${x + barW / 2}" y="${Math.max(topPad + 10, y - 8)}" text-anchor="middle" class="chart-bar-value">${d.value}</text>
+        <rect class="chart-bar-rect" x="${x}" y="${y}" width="${barW}" height="${Math.max(barH, 2)}" rx="6" fill="${d.color}" />
+        <text x="${x + barW / 2}" y="${topPad + chartH + 18}" text-anchor="middle" class="chart-bar-label">${escapeHtml(d.main)}</text>
+        <text x="${x + barW / 2}" y="${topPad + chartH + 33}" text-anchor="middle" class="chart-bar-label-sub">${escapeHtml(d.sub)}</text>
+      </g>
+    `;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" class="bar-chart-svg" preserveAspectRatio="xMinYMid meet">
+    <line x1="0" y1="${topPad + chartH}" x2="${w}" y2="${topPad + chartH}" class="chart-baseline" />
+    ${bars}
+  </svg>`;
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function init() {

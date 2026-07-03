@@ -71,6 +71,20 @@
 
   <!-- MAIN CONTENT -->
   <main class="main-content">
+    <!-- VIEW TABS -->
+    <div class="view-tabs">
+      <button class="view-tab active" id="tabEntries">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+        এন্ট্রি লিস্ট
+      </button>
+      <button class="view-tab" id="tabAnalytics">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>
+        পারফরম্যান্স
+      </button>
+    </div>
+
+    <!-- ENTRIES VIEW -->
+    <div id="entriesView">
     <!-- FILTER & SEARCH BAR -->
     <div class="control-bar">
       <div class="search-wrap">
@@ -113,6 +127,71 @@
         <h3>কোনো এন্ট্রি নেই</h3>
         <p>নতুন ওয়ার্ক অর্ডার যোগ করতে উপরের <strong>"নতুন এন্ট্রি"</strong> বাটনে ক্লিক করুন</p>
       </div>
+    </div>
+    </div>
+
+    <!-- ANALYTICS VIEW -->
+    <div id="analyticsView" style="display:none">
+
+      <!-- MONTHLY BREAKDOWN -->
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2 class="analytics-title">মাসিক পারফরম্যান্স</h2>
+          <div class="month-picker">
+            <button class="month-nav-btn" id="monthPrev" title="আগের মাস">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <input type="month" id="monthSelect" class="month-input" />
+            <button class="month-nav-btn" id="monthNext" title="পরের মাস">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="month-summary" id="monthSummary"></div>
+
+        <div class="category-breakdown-grid" id="categoryBreakdownGrid"></div>
+      </section>
+
+      <div class="data-io-divider"></div>
+
+      <!-- COMPARISON CHART -->
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2 class="analytics-title">সময়ভিত্তিক তুলনা</h2>
+        </div>
+
+        <div class="compare-controls">
+          <div class="compare-control-group">
+            <label class="compare-label">সময়কাল</label>
+            <select id="comparePeriodType" class="filter-select">
+              <option value="month">মাস-ওয়াইজ</option>
+              <option value="week">সপ্তাহ-ওয়াইজ</option>
+              <option value="year">বছর-ওয়াইজ</option>
+            </select>
+          </div>
+          <div class="compare-control-group">
+            <label class="compare-label">ক্যাটাগরি</label>
+            <select id="compareCategory" class="filter-select">
+              <option value="">সব ক্যাটাগরি (মোট)</option>
+            </select>
+          </div>
+          <div class="compare-control-group">
+            <label class="compare-label">সর্বশেষ কয়টি সময়কাল</label>
+            <div class="last-n-wrap">
+              <input type="number" id="compareLastN" min="2" max="24" placeholder="যেমনঃ 6" />
+              <button class="btn-secondary" id="btnApplyLastN">প্রয়োগ করুন</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="compare-periods-wrap">
+          <label class="compare-label">তুলনা করার সময়কাল বাছাই করুন (একাধিক)</label>
+          <div class="compare-periods-select" id="comparePeriodsSelect"></div>
+        </div>
+
+        <div class="chart-wrap" id="chartWrap"></div>
+      </section>
     </div>
   </main>
 
@@ -324,6 +403,19 @@
           ইম্পোর্ট করুন
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- CATEGORY ENTRIES MODAL (analytics drill-down) -->
+  <div class="modal" id="categoryEntriesModal" role="dialog" aria-modal="true" aria-labelledby="categoryEntriesTitle">
+    <div class="modal-header">
+      <h2 class="modal-title" id="categoryEntriesTitle">ক্যাটাগরি এন্ট্রি</h2>
+      <button class="modal-close" id="categoryEntriesClose" aria-label="বন্ধ করুন">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="cat-entries-list" id="categoryEntriesList"></div>
     </div>
   </div>
 
